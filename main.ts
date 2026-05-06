@@ -14,6 +14,7 @@ import {
   ProtocolRequest,
 } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import fs from 'fs';
 import path from 'path';
 import registerAppLifecycleListeners from './main/registerAppLifecycleListeners';
 import registerAutoUpdaterListeners from './main/registerAutoUpdaterListeners';
@@ -28,6 +29,7 @@ export class Main {
   winURL = '';
   checkedForUpdate = false;
   mainWindow: BrowserWindow | null = null;
+  hasLoadedMainWindow = false;
 
   WIDTH = 1200;
   HEIGHT = process.platform === 'win32' ? 826 : 800;
@@ -63,7 +65,7 @@ export class Main {
 
     this.registerListeners();
     if (this.isMac && this.isDevelopment) {
-      app.dock.setIcon(this.icon);
+      app.dock?.setIcon(this.icon);
     }
   }
 
@@ -126,6 +128,7 @@ export class Main {
   async createWindow() {
     const options = this.getOptions();
     this.mainWindow = new BrowserWindow(options);
+    this.setMainWindowListeners();
 
     if (this.isDevelopment) {
       this.setViteServerURL();
@@ -133,12 +136,11 @@ export class Main {
       this.registerAppProtocol();
     }
 
+    writeStartupLog(`loading window url: ${this.winURL}`);
     await this.mainWindow.loadURL(this.winURL);
     if (this.isDevelopment && !this.isTest) {
       this.mainWindow.webContents.openDevTools();
     }
-
-    this.setMainWindowListeners();
   }
 
   setViteServerURL() {
@@ -169,6 +171,16 @@ export class Main {
     this.mainWindow.on('closed', () => {
       this.mainWindow = null;
     });
+    this.mainWindow.webContents.on('did-start-loading', () => {
+      writeStartupLog('did-start-loading');
+    });
+    this.mainWindow.webContents.on('did-finish-load', () => {
+      this.hasLoadedMainWindow = true;
+      writeStartupLog('did-finish-load');
+    });
+    this.mainWindow.webContents.on('dom-ready', () => {
+      writeStartupLog('dom-ready');
+    });
 
     this.mainWindow.webContents.on(
       'did-fail-load',
@@ -183,6 +195,7 @@ export class Main {
             winURL: this.winURL,
           }
         );
+        writeStartupLog(message);
         dialog.showErrorBox('Failed to load app window', message);
       }
     );
@@ -191,10 +204,32 @@ export class Main {
         new Error(`Renderer process gone: ${details.reason}`),
         details as unknown as Record<string, unknown>
       );
+      writeStartupLog(`renderer process gone: ${details.reason}`);
     });
     this.mainWindow.webContents.on('unresponsive', () => {
       emitMainProcessError(new Error('Renderer became unresponsive'));
+      writeStartupLog('renderer unresponsive');
     });
+    setTimeout(() => {
+      if (this.hasLoadedMainWindow || !this.mainWindow) {
+        return;
+      }
+
+      const msg = `Main window did not finish loading within timeout. URL: ${this.winURL}`;
+      writeStartupLog(msg);
+      dialog.showErrorBox('Startup timeout', msg);
+    }, 15000);
+  }
+}
+
+function writeStartupLog(message: string) {
+  try {
+    const logDir = app.getPath('userData');
+    const logFile = path.join(logDir, 'startup.log');
+    const line = `[${new Date().toISOString()}] ${message}\n`;
+    fs.appendFileSync(logFile, line, 'utf-8');
+  } catch {
+    // no-op: logging must never crash app startup
   }
 }
 
