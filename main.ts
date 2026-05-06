@@ -9,12 +9,11 @@ import {
   app,
   BrowserWindow,
   BrowserWindowConstructorOptions,
+  dialog,
   protocol,
   ProtocolRequest,
-  ProtocolResponse,
 } from 'electron';
 import { autoUpdater } from 'electron-updater';
-import fs from 'fs';
 import path from 'path';
 import registerAppLifecycleListeners from './main/registerAppLifecycleListeners';
 import registerAutoUpdaterListeners from './main/registerAutoUpdaterListeners';
@@ -39,7 +38,16 @@ export class Main {
       : path.join(__dirname, 'icons', '512x512.png');
 
     protocol.registerSchemesAsPrivileged([
-      { scheme: 'app', privileges: { secure: true, standard: true } },
+      {
+        scheme: 'app',
+        privileges: {
+          secure: true,
+          standard: true,
+          supportFetchAPI: true,
+          corsEnabled: true,
+          stream: true,
+        },
+      },
     ]);
 
     if (this.isDevelopment) {
@@ -147,7 +155,7 @@ export class Main {
   }
 
   registerAppProtocol() {
-    protocol.registerBufferProtocol('app', bufferProtocolCallback);
+    protocol.registerFileProtocol('app', bufferProtocolCallback);
 
     // Use the registered protocol url to load the files.
     this.winURL = 'app://./index.html';
@@ -165,10 +173,9 @@ export class Main {
     this.mainWindow.webContents.on(
       'did-fail-load',
       (_event, errorCode, errorDescription, validatedURL) => {
+        const message = `Window failed to load (${errorCode}: ${errorDescription}) at ${validatedURL}`;
         emitMainProcessError(
-          new Error(
-            `Window failed to load (${errorCode}: ${errorDescription}) at ${validatedURL}`
-          ),
+          new Error(message),
           {
             errorCode,
             errorDescription,
@@ -176,6 +183,7 @@ export class Main {
             winURL: this.winURL,
           }
         );
+        dialog.showErrorBox('Failed to load app window', message);
       }
     );
     this.mainWindow.webContents.on('render-process-gone', (_event, details) => {
@@ -190,25 +198,6 @@ export class Main {
   }
 }
 
-function getMimeType(filePath: string) {
-  const extension = path.extname(filePath).toLowerCase();
-  return (
-    {
-      '.js': 'text/javascript',
-      '.css': 'text/css',
-      '.html': 'text/html',
-      '.svg': 'image/svg+xml',
-      '.json': 'application/json',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.woff': 'font/woff',
-      '.woff2': 'font/woff2',
-      '.map': 'application/json',
-    }[extension] ?? 'application/octet-stream'
-  );
-}
-
 /**
  * Callback used to register the custom app protocol,
  * during prod, files are read and served by using this
@@ -216,7 +205,7 @@ function getMimeType(filePath: string) {
  */
 function bufferProtocolCallback(
   request: ProtocolRequest,
-  callback: (response: ProtocolResponse) => void
+  callback: (path: string) => void
 ) {
   const { pathname, host } = new URL(request.url);
   const filePath = path.join(
@@ -225,23 +214,7 @@ function bufferProtocolCallback(
     decodeURI(host),
     decodeURI(pathname)
   );
-
-  fs.readFile(filePath, (error, data) => {
-    if (error) {
-      emitMainProcessError(
-        new Error(`Failed to read app protocol asset: ${filePath}`),
-        {
-          requestUrl: request.url,
-          filePath,
-          errorMessage: error.message,
-        }
-      );
-      callback({ statusCode: 404, data: Buffer.from('') });
-      return;
-    }
-
-    callback({ mimeType: getMimeType(filePath), data });
-  });
+  callback(filePath);
 }
 
 export default new Main();
