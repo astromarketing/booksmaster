@@ -13,7 +13,7 @@ import TemplateBuilder from 'src/pages/TemplateBuilder/TemplateBuilder.vue';
 import CustomizeForm from 'src/pages/CustomizeForm/CustomizeForm.vue';
 import POS from 'src/pages/POS/POS.vue';
 import type { HistoryState } from 'vue-router';
-import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router';
+import { createRouter, createWebHashHistory, RouteRecordRaw } from 'vue-router';
 import { historyState } from './utils/refs';
 
 const routes: RouteRecordRaw[] = [
@@ -139,7 +139,7 @@ const routes: RouteRecordRaw[] = [
   },
 ];
 
-const router = createRouter({ routes, history: createWebHistory() });
+const router = createRouter({ routes, history: createWebHashHistory() });
 
 router.afterEach(({ fullPath }) => {
   const state = history.state as HistoryState;

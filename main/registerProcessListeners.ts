@@ -18,7 +18,10 @@ export default function registerProcessListeners(main: Main) {
   }
 
   process.on(CUSTOM_EVENTS.MAIN_PROCESS_ERROR, (error, more) => {
-    main.mainWindow!.webContents.send(
+    if (!main.mainWindow) {
+      return;
+    }
+    main.mainWindow.webContents.send(
       IPC_CHANNELS.LOG_MAIN_PROCESS_ERROR,
       error,
       more
@@ -26,17 +29,22 @@ export default function registerProcessListeners(main: Main) {
   });
 
   process.on('unhandledRejection', (error) => {
-    main.mainWindow!.webContents.send(
+    if (!main.mainWindow) {
+      return;
+    }
+    main.mainWindow.webContents.send(
       IPC_CHANNELS.LOG_MAIN_PROCESS_ERROR,
       error
     );
   });
 
   process.on('uncaughtException', (error) => {
-    main.mainWindow!.webContents.send(
-      IPC_CHANNELS.LOG_MAIN_PROCESS_ERROR,
-      error
-    );
+    if (main.mainWindow) {
+      main.mainWindow.webContents.send(
+        IPC_CHANNELS.LOG_MAIN_PROCESS_ERROR,
+        error
+      );
+    }
     setTimeout(() => process.exit(1), 10000);
   });
 }

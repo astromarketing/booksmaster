@@ -10,12 +10,13 @@ import {
   BrowserWindow,
   BrowserWindowConstructorOptions,
   dialog,
+  net,
   protocol,
-  ProtocolRequest,
 } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import fs from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import registerAppLifecycleListeners from './main/registerAppLifecycleListeners';
 import registerAutoUpdaterListeners from './main/registerAutoUpdaterListeners';
 import registerIpcMainActionListeners from './main/registerIpcMainActionListeners';
@@ -157,7 +158,16 @@ export class Main {
   }
 
   registerAppProtocol() {
-    protocol.registerFileProtocol('app', bufferProtocolCallback);
+    protocol.handle('app', (request) => {
+      const { pathname, host } = new URL(request.url);
+      const filePath = path.join(
+        __dirname,
+        'src',
+        decodeURI(host),
+        decodeURI(pathname)
+      );
+      return net.fetch(pathToFileURL(filePath).toString());
+    });
 
     // Use the registered protocol url to load the files.
     this.winURL = 'app://./index.html';
@@ -233,23 +243,6 @@ function writeStartupLog(message: string) {
   }
 }
 
-/**
- * Callback used to register the custom app protocol,
- * during prod, files are read and served by using this
- * protocol.
- */
-function bufferProtocolCallback(
-  request: ProtocolRequest,
-  callback: (path: string) => void
-) {
-  const { pathname, host } = new URL(request.url);
-  const filePath = path.join(
-    __dirname,
-    'src',
-    decodeURI(host),
-    decodeURI(pathname)
-  );
-  callback(filePath);
-}
+
 
 export default new Main();
