@@ -4,7 +4,7 @@ import { App as VueApp, createApp } from 'vue';
 import App from './App.vue';
 import Badge from './components/Badge.vue';
 import FeatherIcon from './components/FeatherIcon.vue';
-import { handleError, sendError } from './errorHandling';
+import { handleError, sendError, showErrorDialog } from './errorHandling';
 import { fyo } from './initFyo';
 import { outsideClickDirective } from './renderer/helpers';
 import registerIpcRendererListeners from './renderer/registerIpcRendererListeners';
@@ -58,7 +58,15 @@ import { setLanguageMap } from './utils/language';
 
   await fyo.telemetry.logOpened();
   app.mount('body');
-})();
+})().catch(async (error) => {
+  const normalizedError =
+    error instanceof Error ? error : new Error(String(error));
+  await handleError(true, normalizedError, { startupPhase: 'renderer-init' });
+  await showErrorDialog(
+    'Failed to start Frappe Books',
+    normalizedError.message || 'Unknown startup error.'
+  );
+});
 
 function setErrorHandlers(app: VueApp) {
   window.onerror = (message, source, lineno, colno, error) => {

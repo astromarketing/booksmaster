@@ -140,10 +140,15 @@ export default defineComponent({
     },
   },
   async mounted() {
-    await this.setInitialScreen();
-    const darkMode = !!fyo.singles.SystemSettings?.darkMode;
-    setDarkMode(darkMode);
-    this.darkMode = darkMode;
+    try {
+      await this.setInitialScreen();
+      const darkMode = !!fyo.singles.SystemSettings?.darkMode;
+      setDarkMode(darkMode);
+      this.darkMode = darkMode;
+    } catch (error) {
+      await handleErrorWithDialog(error, undefined, true, true);
+      await this.showDbSelector();
+    }
   },
   methods: {
     async setInitialScreen(): Promise<void> {
