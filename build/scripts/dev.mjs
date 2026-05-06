@@ -80,6 +80,7 @@ let isReload = false;
 let electronProcess = null;
 
 console.log(`running Frappe Books in dev mode\nroot: ${root}`);
+await ensureNativeModulesReady();
 /**
  * @type {import('execa').ExecaChildProcess<string>}
  */
@@ -187,4 +188,18 @@ function runElectron() {
   });
 
   return electronProcess;
+}
+
+async function ensureNativeModulesReady() {
+  const shouldSkip = process.env['SKIP_NATIVE_REBUILD'] === '1';
+  if (shouldSkip) {
+    return;
+  }
+
+  // Windows frequently hits ABI/arch drift for better-sqlite3 when node/electron updates.
+  // Rebuild native deps for the current electron runtime before launching dev.
+  if (process.platform === 'win32') {
+    console.log('rebuilding native modules for Electron (Windows dev preflight)');
+    await $$`npx electron-rebuild -f -w better-sqlite3`;
+  }
 }

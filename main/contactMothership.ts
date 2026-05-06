@@ -28,6 +28,7 @@ export function getUrlAndTokenString(): Creds {
     [apiKey, apiSecret, errorLogUrl, telemetryUrl] = fs
       .readFileSync(errLogCredsPath, 'utf-8')
       .split('\n')
+      .map((line) => line.trim())
       .filter((f) => f.length);
   } catch (err) {
     if (!inProduction) {
@@ -39,9 +40,27 @@ export function getUrlAndTokenString(): Creds {
     return empty;
   }
 
+  if (!apiKey || !apiSecret || !errorLogUrl || !telemetryUrl) {
+    if (!inProduction) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `logging creds are incomplete at: ${errLogCredsPath}, telemetry disabled`
+      );
+    }
+    return empty;
+  }
+
+  const safeEncode = (url: string) => {
+    try {
+      return encodeURI(url);
+    } catch {
+      return '';
+    }
+  };
+
   return {
-    errorLogUrl: encodeURI(errorLogUrl),
-    telemetryUrl: encodeURI(telemetryUrl),
+    errorLogUrl: safeEncode(errorLogUrl),
+    telemetryUrl: safeEncode(telemetryUrl),
     tokenString: `token ${apiKey}:${apiSecret}`,
   };
 }

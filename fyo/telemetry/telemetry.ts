@@ -100,6 +100,10 @@ export class TelemetryManager {
       telemetryData,
     });
 
+    if (!this.#isValidHttpUrl(this.#url)) {
+      return;
+    }
+
     navigator.sendBeacon(this.#url, data);
   }
 
@@ -111,6 +115,15 @@ export class TelemetryManager {
     const { telemetryUrl, tokenString } = await this.fyo.auth.getCreds();
     this.#url = telemetryUrl;
     this.#token = tokenString;
+  }
+
+  #isValidHttpUrl(value: string) {
+    try {
+      const url = new URL(value);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
+    }
   }
 
   #getTelemtryData(
