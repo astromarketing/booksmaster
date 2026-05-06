@@ -162,12 +162,51 @@ export class Main {
       this.mainWindow = null;
     });
 
-    this.mainWindow.webContents.on('did-fail-load', () => {
-      this.mainWindow!.loadURL(this.winURL).catch((err) =>
-        emitMainProcessError(err)
+    this.mainWindow.webContents.on(
+      'did-fail-load',
+      (_event, errorCode, errorDescription, validatedURL) => {
+        emitMainProcessError(
+          new Error(
+            `Window failed to load (${errorCode}: ${errorDescription}) at ${validatedURL}`
+          ),
+          {
+            errorCode,
+            errorDescription,
+            validatedURL,
+            winURL: this.winURL,
+          }
+        );
+      }
+    );
+    this.mainWindow.webContents.on('render-process-gone', (_event, details) => {
+      emitMainProcessError(
+        new Error(`Renderer process gone: ${details.reason}`),
+        details as unknown as Record<string, unknown>
       );
     });
+    this.mainWindow.webContents.on('unresponsive', () => {
+      emitMainProcessError(new Error('Renderer became unresponsive'));
+    });
   }
+}
+
+function getMimeType(filePath: string) {
+  const extension = path.extname(filePath).toLowerCase();
+  return (
+    {
+      '.js': 'text/javascript',
+      '.css': 'text/css',
+      '.html': 'text/html',
+      '.svg': 'image/svg+xml',
+      '.json': 'application/json',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.woff': 'font/woff',
+      '.woff2': 'font/woff2',
+      '.map': 'application/json',
+    }[extension] ?? 'application/octet-stream'
+  );
 }
 
 /**
@@ -187,18 +226,21 @@ function bufferProtocolCallback(
     decodeURI(pathname)
   );
 
-  fs.readFile(filePath, (_, data) => {
-    const extension = path.extname(filePath).toLowerCase();
-    const mimeType =
-      {
-        '.js': 'text/javascript',
-        '.css': 'text/css',
-        '.html': 'text/html',
-        '.svg': 'image/svg+xml',
-        '.json': 'application/json',
-      }[extension] ?? '';
+  fs.readFile(filePath, (error, data) => {
+    if (error) {
+      emitMainProcessError(
+        new Error(`Failed to read app protocol asset: ${filePath}`),
+        {
+          requestUrl: request.url,
+          filePath,
+          errorMessage: error.message,
+        }
+      );
+      callback({ statusCode: 404, data: Buffer.from('') });
+      return;
+    }
 
-    callback({ mimeType, data });
+    callback({ mimeType: getMimeType(filePath), data });
   });
 }
 

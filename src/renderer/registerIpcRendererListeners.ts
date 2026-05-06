@@ -5,9 +5,8 @@ import { syncDocumentsToERPNext } from 'src/utils/erpnextSync';
 export default function registerIpcRendererListeners() {
   ipc.registerMainProcessErrorListener(
     (_, error: unknown, more?: Record<string, unknown>) => {
-      if (!(error instanceof Error)) {
-        throw error;
-      }
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
 
       if (!more) {
         more = {};
@@ -21,7 +20,7 @@ export default function registerIpcRendererListeners() {
       more.notifyUser ??= true;
 
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      handleError(true, error, more, !!more.notifyUser);
+      handleError(true, normalizedError, more, !!more.notifyUser);
     }
   );
 
