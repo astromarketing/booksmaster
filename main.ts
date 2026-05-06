@@ -10,18 +10,39 @@ import {
   BrowserWindow,
   BrowserWindowConstructorOptions,
   dialog,
-  net,
   protocol,
 } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import fs from 'fs';
 import path from 'path';
-import { pathToFileURL } from 'url';
 import registerAppLifecycleListeners from './main/registerAppLifecycleListeners';
 import registerAutoUpdaterListeners from './main/registerAutoUpdaterListeners';
 import registerIpcMainActionListeners from './main/registerIpcMainActionListeners';
 import registerIpcMainMessageListeners from './main/registerIpcMainMessageListeners';
 import registerProcessListeners from './main/registerProcessListeners';
+
+/**
+ * MIME type map used by the custom app:// protocol handler
+ * to set correct Content-Type headers when serving files.
+ */
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.mjs': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.map': 'application/json',
+};
 
 export class Main {
   title = 'Frappe Books';
@@ -138,8 +159,21 @@ export class Main {
     }
 
     writeStartupLog(`loading window url: ${this.winURL}`);
+    writeStartupLog(`__dirname: ${__dirname}`);
+    writeStartupLog(`isDevelopment: ${this.isDevelopment}`);
+
+    const srcDir = path.join(__dirname, 'src');
+    writeStartupLog(`src dir exists: ${fs.existsSync(srcDir)}`);
+    const indexPath = path.join(srcDir, '.', 'index.html');
+    writeStartupLog(`index.html exists: ${fs.existsSync(indexPath)}`);
+
     await this.mainWindow.loadURL(this.winURL);
     if (this.isDevelopment && !this.isTest) {
+      this.mainWindow.webContents.openDevTools();
+    }
+
+    // Temporarily open DevTools in production for debugging white screen
+    if (!this.isDevelopment) {
       this.mainWindow.webContents.openDevTools();
     }
   }
@@ -157,6 +191,13 @@ export class Main {
     this.winURL = `http://${host}:${port}/`;
   }
 
+  /**
+   * Registers the custom app:// protocol for production builds.
+   *
+   * Uses fs.readFileSync to read files, which Electron patches to
+   * handle ASAR archives natively. This avoids issues with net.fetch
+   * and pathToFileURL not resolving ASAR paths correctly on Windows.
+   */
   registerAppProtocol() {
     protocol.handle('app', (request) => {
       const { pathname, host } = new URL(request.url);
@@ -166,7 +207,28 @@ export class Main {
         decodeURI(host),
         decodeURI(pathname)
       );
-      return net.fetch(pathToFileURL(filePath).toString());
+
+      writeStartupLog(`protocol request: ${request.url} -> ${filePath}`);
+
+      try {
+        const data = fs.readFileSync(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeType = MIME_TYPES[ext] || 'application/octet-stream';
+
+        writeStartupLog(`protocol served: ${filePath} (${mimeType}, ${data.length} bytes)`);
+
+        return new Response(data, {
+          status: 200,
+          headers: { 'content-type': mimeType },
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        writeStartupLog(`protocol error: ${filePath} -> ${message}`);
+        return new Response(`Not found: ${filePath}`, {
+          status: 404,
+          headers: { 'content-type': 'text/plain' },
+        });
+      }
     });
 
     // Use the registered protocol url to load the files.
@@ -243,6 +305,5 @@ function writeStartupLog(message: string) {
   }
 }
 
-
-
 export default new Main();
+
